@@ -18,21 +18,26 @@ class AuthController extends Controller
         $client = new Client();
 
         try {
-            $response = $client->post(env('WSO2_TOKEN_URL'), [
-                'form_params' => [
-                    'grant_type' => 'password',
-                    'username' => $request->username,
-                    'password' => $request->password,
-                    'client_id' => env('WSO2_CLIENT_ID'),
-                    'client_secret' => env('WSO2_CLIENT_SECRET'),
-                ],
-                'verify' => false
-            ]);
+            $url = 'https://localhost:9443/api/identity/auth/v1.1/authenticate';
+            $body = [
+                'username' => $request->username,
+                'password' => $request->password,
+            ];
 
-            $data = json_decode($response->getBody(), true);
-            return response()->json($data);
+            $response = $client->post($url, [
+                'headers' => [
+                    'accept' => 'application/json',
+                    'Content-Type' => 'application/json',
+                ],
+                'json' => $body,
+                'verify' => false,
+            ]);
+            return response()->json(json_decode($response->getBody(), true), $response->getStatusCode());
         } catch (\Exception $e) {
-            return response()->json(['error' => 'Unauthorized'], 401);
+            return response()->json([
+                'error' => 'Error al autenticar',
+                'message' => $e->getMessage(),
+            ], $e->getCode() ?: 500);
         }
     }
 
@@ -61,10 +66,7 @@ class AuthController extends Controller
                         'givenName' => $request->username,
                         'familyName' => 'Apellido',
                     ],
-                    'emails' => [
-                        'value' => $request->email,
-                        'primary' => true,
-                    ],
+                    'emails' => $request->emails,
                     'active' => true,
                     'password' => $request->password, 
                 ],
@@ -84,9 +86,7 @@ class AuthController extends Controller
         try {
             $response = $client->post(env('WSO2_TOKEN_URL'), [
                 'form_params' => [
-                    'grant_type' => 'password', 
-                    'username' => 'admin', 
-                    'password' => 'admin', 
+                    'grant_type' => 'client_credentials', 
                     'client_id' => env('WSO2_CLIENT_ID'), 
                     'client_secret' => env('WSO2_CLIENT_SECRET'),
                 ],
@@ -97,6 +97,50 @@ class AuthController extends Controller
             return $data['access_token'];
         } catch (\Exception $e) {
             throw new \Exception('Error al obtener el token de acceso: ' . $e->getMessage());
+        }
+    }
+
+    public function resetPassword(Request $request)
+    {
+        try {
+            $client = new Client();
+            $response = $client->request('GET', 'https://localhost:9443/scim2/Users?filter=emails+eq+'."$request->email", [
+                'headers' => [
+                    'Authorization' => 'Basic YWRtaW46YWRtaW4='
+                ],
+                'verify' => false,
+            ]);
+            $dataUser = json_decode($response->getBody(), true);
+        } catch (\Throwable $th) {
+            return response()->json(['error' => $th->getMessage()], 400);
+
+        }
+
+        $url = 'https://localhost:9443/wso2/scim/Users/'.$dataUser['Resources'][0]['id'];
+
+        $body = [
+            'password' => $request->password,
+            'userName' => $request->userName,
+        ];
+
+        try {
+            $accessToken = $this->getManagementAccessToken(); 
+            $response = $client->patch($url, [
+                'headers' => [
+                    'accept' => 'application/json',
+                    'Content-Type' => 'application/json',
+                    'Authorization' => 'Bearer ' . $accessToken,
+                ],
+                'json' => $body,
+                'verify' => false,
+            ]);
+
+            return response()->json(json_decode($response->getBody(), true), $response->getStatusCode());
+        } catch (\Throwable $e) {
+            return response()->json([
+                'error' => 'Error al enviar el enlace de recuperación',
+                'message' => $e->getMessage(),
+            ], $e->getCode() ?: 500);
         }
     }
 }
