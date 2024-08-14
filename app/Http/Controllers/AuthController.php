@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use GuzzleHttp\Client;
+use Ichtrojan\Otp\Otp;
 
 class AuthController extends Controller
 {
@@ -49,7 +50,7 @@ class AuthController extends Controller
             'email' => 'required|email',
         ]);
 
-        $accessToken = $this->getManagementAccessToken(); 
+        $accessToken = $this->getManagementAccessToken();
         $client = new Client();
 
         try {
@@ -68,14 +69,14 @@ class AuthController extends Controller
                     ],
                     'emails' => $request->emails,
                     'active' => true,
-                    'password' => $request->password, 
+                    'password' => $request->password,
                 ],
             ]);
 
             $data = json_decode($response->getBody(), true);
-            return response()->json($data, 201); 
+            return response()->json($data, 201);
         } catch (\Exception $e) {
-            return response()->json(['error' => $e->getMessage()], 400); 
+            return response()->json(['error' => $e->getMessage()], 400);
         }
     }
 
@@ -86,8 +87,8 @@ class AuthController extends Controller
         try {
             $response = $client->post(env('WSO2_TOKEN_URL'), [
                 'form_params' => [
-                    'grant_type' => 'client_credentials', 
-                    'client_id' => env('WSO2_CLIENT_ID'), 
+                    'grant_type' => 'client_credentials',
+                    'client_id' => env('WSO2_CLIENT_ID'),
                     'client_secret' => env('WSO2_CLIENT_SECRET'),
                 ],
                 'verify' => false,
@@ -124,7 +125,7 @@ class AuthController extends Controller
         ];
 
         try {
-            $accessToken = $this->getManagementAccessToken(); 
+            $accessToken = $this->getManagementAccessToken();
             $response = $client->patch($url, [
                 'headers' => [
                     'accept' => 'application/json',
@@ -141,6 +142,90 @@ class AuthController extends Controller
                 'error' => 'Error al enviar el enlace de recuperación',
                 'message' => $e->getMessage(),
             ], $e->getCode() ?: 500);
+        }
+    }
+
+    public function searchUserById(Request $request)
+    {
+        $request->validate([
+            'idUser' => 'required'
+        ]);
+
+        $accessToken = $this->getManagementAccessToken();
+        $client = new Client();
+
+        try {
+            $response = $client->get('https://localhost:9443/wso2/scim/Users/'.$request->idUser, [
+                'headers' => [
+                    'Authorization' => 'Bearer ' . $accessToken,
+                    'Content-Type' => 'application/json',
+                ],
+                'verify' => false,
+            ]);
+
+            $responseBody = $response->getBody()->getContents();
+            $userData = json_decode($responseBody, true);
+
+            return response()->json($userData, 201);
+        } catch (\Throwable $e) {
+            return response()->json(['error' => $e->getMessage()], 400);
+        }
+    }
+
+    public function generateOtp(Request $request)
+    {
+        // (new Otp)->generate(string $identifier, string $type, int $length = 4, int $validity = 10);
+        $validateUser = $this->validateUserExists($request->usuario);
+
+        $status = $validateUser->getStatusCode();
+
+        if ($status == '200'){
+            $otp = (new Otp)->generate('user', 'numeric', 5, 5);
+            return $otp;
+        } else if ($status == '404') {
+            return response()->json(['error' => 'El usuario no fue encontrado'], 404);
+        } else if ($status == '500') {
+            return response()->json(['error' => $validateUser], 500);
+        }
+    }
+
+    public function validateUserExists($user) {
+
+        $accessToken = $this->getManagementAccessToken();
+        $client = new \GuzzleHttp\Client();
+
+        try {
+            $response = $client->get('https://localhost:9443/wso2/scim/Users?filter=userName eq "' . $user . '"', [
+                'headers' => [
+                    'Authorization' => 'Bearer ' . $accessToken,
+                    'Content-Type' => 'application/json',
+                ],
+                'verify' => false,
+            ]);
+
+            $responseBody = $response->getBody()->getContents();
+            $userData = json_decode($responseBody, true);
+
+            if ($userData['totalResults'] > 0) {
+                return response()->json($userData, 200);
+            }
+
+        } catch (RequestException $e) {
+            if ($e->hasResponse()) {
+                $statusCode = $e->getResponse()->getStatusCode();
+                $statusText = $e->getResponse()->getReasonPhrase();
+                $errorBody = $e->getResponse()->getBody()->getContents();
+
+                return response()->json([
+                    'error' => $statusText,
+                    'code' => $statusCode,
+                    'details' => json_decode($errorBody, true),
+                ], $statusCode);
+            } else {
+                return response()->json(['error' => $e->getMessage()], 500);
+            }
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'Usuario Inexistente'], 404);
         }
     }
 }
