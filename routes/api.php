@@ -3,6 +3,7 @@
 use App\Http\Controllers\AuthController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\OtpController;
 
 /*
 |--------------------------------------------------------------------------
@@ -24,5 +25,6 @@ Route::post('/create-user', [AuthController::class, 'createUser']);
 Route::patch('/reset-password', [AuthController::class, 'resetPassword']);
 Route::post('/code-otp', [AuthController::class, 'codeOtp']);
 Route::get('/search-user', [AuthController::class, 'searchUserById']);
-Route::post('generate-otp', [AuthController::class, 'generateOtp']);
-Route::get('validate-user', [AuthController::class, 'validateUserExists']);
+Route::post('generate-otp', [OtpController::class, 'generateOtp']);
+Route::get('validate-user', [OtpController::class, 'validateUserExists']);
+Route::post('validateOtp', [OtpController::class, 'validateCodeOtp']);
