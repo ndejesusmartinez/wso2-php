@@ -103,8 +103,18 @@ class AuthController extends Controller
     public function resetPassword(Request $request)
     {
         try {
+            if(empty($request->email)){
+                $validateUser = $this->validateUserExists($request->input('userName'));
+                $idUser = $validateUser->original['Resources']['0']['id'];
+                $email = self::getEmailByUser($idUser);
+                $emailValidate = $email->original['email'];
+            }else{
+                $emailValidate = $request->email;
+            }
+            
+
             $client = new Client();
-            $response = $client->request('GET', 'https://localhost:9443/scim2/Users?filter=emails+eq+'."$request->email", [
+            $response = $client->request('GET', 'https://localhost:9443/scim2/Users?filter=emails+eq+'."$emailValidate", [
                 'headers' => [
                     'Authorization' => 'Basic YWRtaW46YWRtaW4='
                 ],
@@ -135,7 +145,10 @@ class AuthController extends Controller
                 'verify' => false,
             ]);
 
-            return response()->json(json_decode($response->getBody(), true), $response->getStatusCode());
+            return response()->json([
+                'data' => json_decode($response->getBody(), true), $response->getStatusCode(),
+                'status' => true
+            ]);
         } catch (\Throwable $e) {
             return response()->json([
                 'error' => 'Error al enviar el enlace de recuperación',
@@ -168,6 +181,77 @@ class AuthController extends Controller
             return response()->json($userData, 201);
         } catch (\Throwable $e) {
             return response()->json(['error' => $e->getMessage()], 400);
+        }
+    }
+
+    private function getEmailByUser($id)
+    {
+        try {
+            $client = new Client();
+            $response = $client->request('GET', 'https://localhost:9443/scim2/Users/'."$id", [
+                'headers' => [
+                    'Authorization' => 'Basic YWRtaW46YWRtaW4='
+                ],
+                'verify' => false,
+            ]);
+            $dataUser = json_decode($response->getBody(), true);
+            if(!empty($dataUser['emails'][0])){
+                return response()->json([
+                    'status' => true,
+                    'email' => $dataUser['emails'][0]
+                ], 200);
+            }else{
+                return response()->json([
+                    'status' => false,
+                    'msg' => 'Usuario no encontrado, favor contactar a soporte'
+                ],404);
+            }
+
+        } catch (\Throwable $th) {
+            return response()->json([
+                'status' => false,
+                'msg' => $th->getMessage()
+            ],500);
+        }
+    }
+
+    public function validateUserExists($user) 
+    {
+        $accessToken = $this->getManagementAccessToken();
+        $client = new \GuzzleHttp\Client();
+
+        try {
+            $response = $client->get('https://localhost:9443/wso2/scim/Users?filter=userName eq "' . $user . '"', [
+                'headers' => [
+                    'Authorization' => 'Bearer ' . $accessToken,
+                    'Content-Type' => 'application/json',
+                ],
+                'verify' => false,
+            ]);
+            
+            $responseBody = $response->getBody()->getContents();
+            $userData = json_decode($responseBody, true);
+
+            if ($userData['totalResults'] > 0) {
+                return response()->json($userData, 200);
+            }
+
+        } catch (RequestException $e) {
+            if ($e->hasResponse()) {
+                $statusCode = $e->getResponse()->getStatusCode();
+                $statusText = $e->getResponse()->getReasonPhrase();
+                $errorBody = $e->getResponse()->getBody()->getContents();
+
+                return response()->json([
+                    'error' => $statusText,
+                    'code' => $statusCode,
+                    'details' => json_decode($errorBody, true),
+                ], $statusCode);
+            } else {
+                return response()->json(['error' => $e->getMessage()], 500);
+            }
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'Usuario Inexistente'], 404);
         }
     }
 }
