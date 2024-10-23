@@ -34,6 +34,29 @@ class AuthController extends Controller
             ]);
             return response()->json(json_decode($response->getBody(), true), $response->getStatusCode());
         } catch (\Exception $e) {
+            $responseBody = $e->getResponse()->getBody()->getContents();
+            $decodedResponse = json_decode($responseBody, true);
+
+            if(json_last_error() === JSON_ERROR_NONE && $decodedResponse['code'] == "17003:AdminInitiated"){
+                return response()->json([
+                    'error' => "Blocked User",
+                    'message' => "The user is blocked, please contact support.",
+                ], $e->getCode() ?: 400);
+            }
+
+            if (json_last_error() === JSON_ERROR_NONE && isset($decodedResponse['code'])) {
+                return response()->json([
+                    'error' => $decodedResponse['code'],
+                    'message' => $decodedResponse['description'] ?? 'Error desconocido',
+                ], $e->getCode() ?: 400);
+            }
+
+            return response()->json([
+                'error' => 'Error al autenticar',
+                'message' => $e->getMessage(),
+            ], $e->getCode() ?: 500);
+
+        } catch (\Exception $e) {
             return response()->json([
                 'error' => 'Error al autenticar',
                 'message' => $e->getMessage(),
