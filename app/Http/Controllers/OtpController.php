@@ -21,8 +21,7 @@ class OtpController extends Controller
             if ($status == '200' && $email->original['status']){
                 $otp = (new Otp)->generate($request->input('usuario'), 'numeric', 6, 5);
                 if($otp->status){
-                    $email = self::sendEmailOtp($otp->token, $email->original['email']['value']);
-                    dd($email);
+                    $email = self::sendEmailOtp($otp->token, $email->original['email']);
                     if($email['status'] == "success"){
                         return response()->json([
                             'status' => true,
