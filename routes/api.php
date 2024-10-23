@@ -4,6 +4,7 @@ use App\Http\Controllers\AuthController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\OtpController;
+use App\Http\Controllers\UserStatusController;
 
 /*
 |--------------------------------------------------------------------------
@@ -25,6 +26,9 @@ Route::post('/create-user', [AuthController::class, 'createUser']);
 Route::patch('/reset-password', [AuthController::class, 'resetPassword']);
 Route::post('/code-otp', [AuthController::class, 'codeOtp']);
 Route::get('/search-user', [AuthController::class, 'searchUserById']);
-Route::post('generate-otp', [OtpController::class, 'generateOtp']);
-Route::get('validate-user', [OtpController::class, 'validateUserExists']);
-Route::post('validateOtp', [OtpController::class, 'validateCodeOtp']);
+Route::post('/generate-otp', [OtpController::class, 'generateOtp']);
+Route::get('/validate-user', [OtpController::class, 'validateUserExists']);
+Route::post('/validateOtp', [OtpController::class, 'validateCodeOtp']);
+Route::patch('/userBlock/{id}', [UserStatusController::class, 'blockUser']);
+Route::patch('/userUnblock/{id}', [UserStatusController::class, 'unblockUser']);
+Route::get('/getIdUser', [UserStatusController::class, 'getIdUser']);
