@@ -16,30 +16,36 @@ class OtpController extends Controller
         $idUser = $validateUser->original['Resources']['0']['id'];
         $email = self::getEmailByUser($idUser);
         $status = $validateUser->getStatusCode();
-        
-        if ($status == '200' && $email->original['status']){
-            $otp = (new Otp)->generate($request->input('usuario'), 'numeric', 6, 5);
-            if($otp->status){
-                $email = self::sendEmailOtp($otp->token, $email->original['email']);
-                if($email['status'] == "success"){
-                    return response()->json([
-                        'status' => true,
-                        'message' => $otp->message
-                    ], 200);
-                }else{
-                    return response()->json([
-                        'ERROR' => $email['msg']
-                    ], 500);
+
+        try {
+            if ($status == '200' && $email->original['status']){
+                $otp = (new Otp)->generate($request->input('usuario'), 'numeric', 6, 5);
+                if($otp->status){
+                    $email = self::sendEmailOtp($otp->token, $email->original['email']['value']);
+                    dd($email);
+                    if($email['status'] == "success"){
+                        return response()->json([
+                            'status' => true,
+                            'message' => $otp->message
+                        ], 200);
+                    }else{
+                        return response()->json([
+                            'ERROR' => $email['msg']
+                        ], 500);
+                    }
                 }
+            } else if ($status == '404') {
+                return response()->json(['error' => 'El usuario no fue encontrado'], 404);
+            } else if ($status == '500') {
+                return response()->json(['error' => $validateUser], 500);
             }
-        } else if ($status == '404') {
-            return response()->json(['error' => 'El usuario no fue encontrado'], 404);
-        } else if ($status == '500') {
-            return response()->json(['error' => $validateUser], 500);
+        } catch (\Throwable $th) {
+            return response()->json(['error' => $th->getMessage()], 500);
         }
+
     }
 
-    public function validateUserExists($user) 
+    public function validateUserExists($user)
     {
         $accessToken = $this->getManagementAccessToken();
         $client = new \GuzzleHttp\Client();
@@ -52,7 +58,7 @@ class OtpController extends Controller
                 ],
                 'verify' => false,
             ]);
-            
+
             $responseBody = $response->getBody()->getContents();
             $userData = json_decode($responseBody, true);
 
