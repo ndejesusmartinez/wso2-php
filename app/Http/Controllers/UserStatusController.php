@@ -49,12 +49,12 @@ class UserStatusController extends Controller
         return $token;
     }
 
-    public function getIdUser(Request $request) {
+    public function getIdUser($userName) {
         $accessToken = $this->getManagementAccessToken();
         $client = new \GuzzleHttp\Client();
 
         try {
-            $response = $client->get('https://localhost:9443/wso2/scim/Users?filter=userName eq "' . $request->input('usuario') . '"', [
+            $response = $client->get('https://localhost:9443/wso2/scim/Users?filter=userName eq "' . $userName . '"', [
                 'headers' => [
                     'Authorization' => 'Bearer ' . $accessToken,
                     'Content-Type' => 'application/json',
@@ -67,7 +67,7 @@ class UserStatusController extends Controller
 
             if ($userData['totalResults'] > 0) {
                 $idUser = $userData['Resources'][0]['id'];
-                return response()->json(['id' => $idUser], 200);
+                return $idUser;
             }
 
         } catch (RequestException $e) {
@@ -85,7 +85,7 @@ class UserStatusController extends Controller
                 return response()->json(['error' => $e->getMessage()], 500);
             }
         } catch (\Exception $e) {
-            return response()->json(['error' => 'Usuario Inexistente'], 404);
+            return 'usuario inexistente';
         }
     }
 
@@ -154,6 +154,29 @@ class UserStatusController extends Controller
 
             return json_decode($response->getBody(), true);
         } catch (\Exception $e) {
+            return 'Error: ' . $e->getMessage();
+        }
+    }
+
+    public function massiveBlock(Request $request) {
+        try {
+            $usersCollection = $request->input('usuarios');
+            $arrUsers = [];
+            
+            foreach ($usersCollection as $user) {
+                $idUser = $this->getIdUser($user);
+
+                if($idUser != "usuario inexistente") {
+                    array_push($arrUsers, $idUser);
+                }
+
+                $bloqUsuario = $this->blockUser($idUser);
+
+                if($bloqUsuario['urn:ietf:params:scim:schemas:extension:enterprise:2.0:User']['accountState'] != "LOCKED") {
+                    return response()->json(['error' => 'Error al bloquear usuario: ' + $idUser], 500);
+                }
+            }
+        } catch (\Throwable $e) {
             return 'Error: ' . $e->getMessage();
         }
     }

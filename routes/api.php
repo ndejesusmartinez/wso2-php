@@ -31,4 +31,5 @@ Route::get('/validate-user', [OtpController::class, 'validateUserExists']);
 Route::post('/validateOtp', [OtpController::class, 'validateCodeOtp']);
 Route::patch('/userBlock/{id}', [UserStatusController::class, 'blockUser']);
 Route::patch('/userUnblock/{id}', [UserStatusController::class, 'unblockUser']);
-Route::get('/getIdUser', [UserStatusController::class, 'getIdUser']);
+Route::get('/getIdUser/{id}', [UserStatusController::class, 'getIdUser']);
+Route::post('/massiveBlock', [UserStatusController::class, 'massiveBlock']);
