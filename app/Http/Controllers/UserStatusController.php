@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use GuzzleHttp\Client;
+use Maatwebsite\Excel\Facades\Excel;
 
 class UserStatusController extends Controller
 {
@@ -158,26 +159,91 @@ class UserStatusController extends Controller
         }
     }
 
-    public function massiveBlock(Request $request) {
+    public function massiveBlockFile(Request $request) {
         try {
-            $usersCollection = $request->input('usuarios');
+            $request->validate([
+                'file' => 'required|file|mimes:xls'
+            ]);
+
+            if($request->file('file')->isValid()){
+                $path = $request->file('file')->store('uploads');
+
+                $data = $this->processFile($path);
+                $block = $this->massiveBlock($data);
+            }
+
+            return response()->json(['Proceso terminado'=> $block]);
+        } catch (\Throwable $th) {
+            return response()->json(['error' => $th], 400);
+        }
+
+    }
+
+    public function processFile($path) {
+        $data = Excel::toArray([], storage_path('app/' . $path));
+
+        $headers = $data[0][0];
+        $rows = array_slice($data[0], 1);
+
+        $userIndex = array_search('USUARIO', $headers);
+
+        $usersList = [];
+
+        foreach ($rows as $row) {
+            $user = $row[$userIndex];
+            array_push($usersList, $user);
+        }
+
+        if ($usersList != []){
+            return $usersList;
+        } else {
+            return response()->json(['message' => 'No hay usuarios para bloquear'], 400);
+        }
+    }
+
+    public function massiveBlock($data) {
+        try {
+            $usersCollection = $data;
             $arrUsers = [];
-            
+            $usersList = [];
+
             foreach ($usersCollection as $user) {
+
                 $idUser = $this->getIdUser($user);
 
-                if($idUser != "usuario inexistente") {
-                    array_push($arrUsers, $idUser);
+                if ($idUser === "usuario inexistente") {
+                    continue;
                 }
+
+                array_push($arrUsers, $idUser);
 
                 $bloqUsuario = $this->blockUser($idUser);
+                $block = true;
 
-                if($bloqUsuario['urn:ietf:params:scim:schemas:extension:enterprise:2.0:User']['accountState'] != "LOCKED") {
-                    return response()->json(['error' => 'Error al bloquear usuario: ' + $idUser], 500);
+                if ($bloqUsuario['urn:ietf:params:scim:schemas:extension:enterprise:2.0:User']['accountState'] !== "LOCKED") {
+                    $block = false;
+
+                    $usersList[] = [
+                        'Usuario' => $user,
+                        'Id Usuario WSO2' => $idUser,
+                        'isLock' => $block,
+                        'Error' => 'Error al bloquear usuario: ' . $idUser
+                    ];
+                    continue;
                 }
+
+                $dataUser = [
+                    'Usuario' => $user,
+                    'Id Usuario WSO2' => $idUser,
+                    'isLock' => $block
+                ];
+
+                array_push($usersList, $dataUser);
             }
+
+            return $usersList;
         } catch (\Throwable $e) {
-            return 'Error: ' . $e->getMessage();
+            return response()->json(['error' => 'Error: ' . $e->getMessage()], 500);
         }
     }
 }
