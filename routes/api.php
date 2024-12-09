@@ -33,3 +33,4 @@ Route::patch('/userBlock/{id}', [UserStatusController::class, 'blockUser']);
 Route::patch('/userUnblock/{id}', [UserStatusController::class, 'unblockUser']);
 Route::get('/getIdUser/{id}', [UserStatusController::class, 'getIdUser']);
 Route::post('/massiveBlock', [UserStatusController::class, 'massiveBlock']);
+Route::post('/massiveBlockFile', [UserStatusController::class, 'massiveBlockFile']);
