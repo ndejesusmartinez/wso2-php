@@ -18,8 +18,12 @@ class AuthController extends Controller
         $client = new Client();
 
         try {
-            $url = 'https://localhost:9443/api/identity/auth/v1.1/authenticate';
+            $url = env('KEYCLOAK_BASE_URL').'/realms/'.env('KEYCLOAK_REALM').'/protocol/openid-connect/token';
+
             $body = [
+                'grant_type' => 'password',
+                'client_id' => env('KEYCLOAK_CLIENT_ID'),
+                'client_secret' => env('KEYCLOAK_CLIENT_SECRET'),
                 'username' => $request->username,
                 'password' => $request->password,
             ];
@@ -27,27 +31,21 @@ class AuthController extends Controller
             $response = $client->post($url, [
                 'headers' => [
                     'accept' => 'application/json',
-                    'Content-Type' => 'application/json',
+                    'Content-Type' => 'application/x-www-form-urlencoded',
                 ],
-                'json' => $body,
+                'form_params' => $body,
                 'verify' => false,
             ]);
+
             return response()->json(json_decode($response->getBody(), true), $response->getStatusCode());
         } catch (\Exception $e) {
             $responseBody = $e->getResponse()->getBody()->getContents();
             $decodedResponse = json_decode($responseBody, true);
 
-            if(json_last_error() === JSON_ERROR_NONE && $decodedResponse['code'] == "17003:AdminInitiated"){
+            if (json_last_error() === JSON_ERROR_NONE && isset($decodedResponse['error'])) {
                 return response()->json([
-                    'error' => "Blocked User",
-                    'message' => "The user is blocked, please contact support.",
-                ], $e->getCode() ?: 400);
-            }
-
-            if (json_last_error() === JSON_ERROR_NONE && isset($decodedResponse['code'])) {
-                return response()->json([
-                    'error' => $decodedResponse['code'],
-                    'message' => $decodedResponse['description'] ?? 'Error desconocido',
+                    'error' => $decodedResponse['error'],
+                    'message' => $decodedResponse['error_description'] ?? 'Error desconocido',
                 ], $e->getCode() ?: 400);
             }
 
@@ -76,27 +74,27 @@ class AuthController extends Controller
         $client = new Client();
 
         try {
-            $response = $client->post('https://localhost:9443/wso2/scim/Users', [
+            $response = $client->post('http://localhost:8080/admin/realms/'.env('KEYCLOAK_REALM').'/users', [
                 'headers' => [
                     'Authorization' => 'Bearer ' . $accessToken,
                     'Content-Type' => 'application/json',
                 ],
                 'verify' => false,
                 'json' => [
-                    'schemas' => ['urn:ietf:params:scim:schemas:core:2.0:User'],
-                    'userName' => $request->username,
-                    'name' => [
-                        'givenName' => $request->username,
-                        'familyName' => 'Apellido',
+                    'username' => $request->username,
+                    'enabled' => true,
+                    'email' => $request->email,
+                    'credentials' => [
+                        [
+                            'type' => 'password',
+                            'value' => $request->password,
+                            'temporary' => false,
+                        ],
                     ],
-                    'emails' => $request->emails,
-                    'active' => true,
-                    'password' => $request->password,
                 ],
             ]);
 
-            $data = json_decode($response->getBody(), true);
-            return response()->json($data, 201);
+            return response()->json(['Message' => 'Usuario creado correctamente, por favor verificar email'], 201);
         } catch (\Exception $e) {
             return response()->json(['error' => $e->getMessage()], 400);
         }
@@ -107,12 +105,14 @@ class AuthController extends Controller
         $client = new Client();
 
         try {
-            $response = $client->post(env('WSO2_TOKEN_URL'), [
+            $response = $client->post(env('KEYCLOAK_TOKEN_URL'), [
                 'form_params' => [
-                    'grant_type' => 'client_credentials',
-                    'client_id' => env('WSO2_CLIENT_ID'),
-                    'client_secret' => env('WSO2_CLIENT_SECRET'),
-                ],
+                'username' => env('KEYCLOAK_ADMINISTRATION_USERNAME'),
+                'password' => env('KEYCLOAK_ADMINISTRATION_PASSWORD'),
+                'grant_type' => 'password',
+                'client_id' => env('KEYCLOAK_CLIENT_ID'),
+                'client_secret' => env('KEYCLOAK_CLIENT_SECRET')
+            ],
                 'verify' => false,
             ]);
 
@@ -126,86 +126,50 @@ class AuthController extends Controller
     public function resetPassword(Request $request)
     {
         try {
-            if(empty($request->email)){
-                $validateUser = $this->validateUserExists($request->input('userName'));
-                $idUser = $validateUser->original['Resources']['0']['id'];
-                $email = self::getEmailByUser($idUser);
-                $emailValidate = $email->original['email'];
-            }else{
-                $emailValidate = $request->email;
-            }
-            
+            $token = $this->getManagementAccessToken();
+            $userId = $this->validateUserExists($request->user);
 
-            $client = new Client();
-            $response = $client->request('GET', 'https://localhost:9443/scim2/Users?filter=emails+eq+'."$emailValidate", [
+            $client = new \GuzzleHttp\Client();
+
+            $response = $client->put('http://localhost:8080/admin/realms/'.env('KEYCLOAK_REALM').'/users/'.$userId.'/reset-password-email', [
                 'headers' => [
-                    'Authorization' => 'Basic YWRtaW46YWRtaW4='
-                ],
-                'verify' => false,
-            ]);
-            $dataUser = json_decode($response->getBody(), true);
-        } catch (\Throwable $th) {
-            return response()->json(['error' => $th->getMessage()], 400);
-
-        }
-
-        $url = 'https://localhost:9443/wso2/scim/Users/'.$dataUser['Resources'][0]['id'];
-
-        $body = [
-            'password' => $request->password,
-            'userName' => $request->userName,
-        ];
-
-        try {
-            $accessToken = $this->getManagementAccessToken();
-            $response = $client->patch($url, [
-                'headers' => [
-                    'accept' => 'application/json',
-                    'Content-Type' => 'application/json',
-                    'Authorization' => 'Bearer ' . $accessToken,
-                ],
-                'json' => $body,
-                'verify' => false,
-            ]);
-
-            return response()->json([
-                'data' => json_decode($response->getBody(), true), $response->getStatusCode(),
-                'status' => true
-            ]);
-        } catch (\Throwable $e) {
-            return response()->json([
-                'error' => 'Error al enviar el enlace de recuperación',
-                'message' => $e->getMessage(),
-            ], $e->getCode() ?: 500);
-        }
-    }
-
-    public function searchUserById(Request $request)
-    {
-        $request->validate([
-            'idUser' => 'required'
-        ]);
-
-        $accessToken = $this->getManagementAccessToken();
-        $client = new Client();
-
-        try {
-            $response = $client->get('https://localhost:9443/wso2/scim/Users/'.$request->idUser, [
-                'headers' => [
-                    'Authorization' => 'Bearer ' . $accessToken,
+                    'Authorization' => 'Bearer ' . $token,
                     'Content-Type' => 'application/json',
                 ],
                 'verify' => false,
             ]);
 
-            $responseBody = $response->getBody()->getContents();
-            $userData = json_decode($responseBody, true);
-
-            return response()->json($userData, 201);
         } catch (\Throwable $e) {
             return response()->json(['error' => $e->getMessage()], 400);
         }
     }
+
+    // public function searchUserById(Request $request)
+    // {
+    //     $request->validate([
+    //         'idUser' => 'required'
+    //     ]);
+
+    //     $accessToken = $this->getManagementAccessToken();
+    //     $client = new Client();
+
+    //     try {
+    //         $response = $client->get('https://localhost:9443/wso2/scim/Users/'.$request->idUser, [
+    //             'headers' => [
+    //                 'Authorization' => 'Bearer ' . $accessToken,
+    //                 'Content-Type' => 'application/json',
+    //             ],
+    //             'verify' => false,
+    //         ]);
+
+    //         $responseBody = $response->getBody()->getContents();
+    //         $userData = json_decode($responseBody, true);
+
+    //         return response()->json($userData, 201);
+    //     } catch (\Throwable $e) {
+    //         return response()->json(['error' => $e->getMessage()], 400);
+    //     }
+    // }
 
     private function getEmailByUser($id)
     {
@@ -238,43 +202,34 @@ class AuthController extends Controller
         }
     }
 
-    public function validateUserExists($user) 
+    public function validateUserExists($user)
     {
         $accessToken = $this->getManagementAccessToken();
         $client = new \GuzzleHttp\Client();
 
         try {
-            $response = $client->get('https://localhost:9443/wso2/scim/Users?filter=userName eq "' . $user . '"', [
+            $response = $client->get('http://localhost:8080/admin/realms/'.env('KEYCLOAK_REALM').'/users', [
                 'headers' => [
                     'Authorization' => 'Bearer ' . $accessToken,
                     'Content-Type' => 'application/json',
                 ],
+                'query' => [
+                    'username' => $user
+                ],
                 'verify' => false,
             ]);
-            
-            $responseBody = $response->getBody()->getContents();
-            $userData = json_decode($responseBody, true);
 
-            if ($userData['totalResults'] > 0) {
-                return response()->json($userData, 200);
+            $userData = json_decode($response->getBody(), true);
+            $userID = $userData[0]['id'];
+
+            if($userID) {
+                return $userID;
+            } else {
+                return response()->json(['error' => 'No se encuentra el user ID'], 404);
             }
 
         } catch (RequestException $e) {
-            if ($e->hasResponse()) {
-                $statusCode = $e->getResponse()->getStatusCode();
-                $statusText = $e->getResponse()->getReasonPhrase();
-                $errorBody = $e->getResponse()->getBody()->getContents();
-
-                return response()->json([
-                    'error' => $statusText,
-                    'code' => $statusCode,
-                    'details' => json_decode($errorBody, true),
-                ], $statusCode);
-            } else {
-                return response()->json(['error' => $e->getMessage()], 500);
-            }
-        } catch (\Exception $e) {
-            return response()->json(['error' => 'Usuario Inexistente'], 404);
+            return response()->json(['error' => $e->getMessage()], 400);
         }
     }
 }
