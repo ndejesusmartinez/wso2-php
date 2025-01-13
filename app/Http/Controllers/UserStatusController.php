@@ -13,17 +13,26 @@ class UserStatusController extends Controller
         $client = new Client();
 
         try {
-            $response = $client->post(env('WSO2_TOKEN_URL'), [
-                'form_params' => [
-                    'grant_type' => 'client_credentials',
-                    'client_id' => env('WSO2_CLIENT_ID'),
-                    'client_secret' => env('WSO2_CLIENT_SECRET'),
+            $url = env('KEYCLOAK_BASE_URL').'/realms/'.env('KEYCLOAK_REALM').'/protocol/openid-connect/token';
+
+            $body = [
+                'grant_type' => 'client_credentials',
+                'client_id' => env('KEYCLOAK_CLIENT_ID'),
+                'client_secret' => env('KEYCLOAK_CLIENT_SECRET'),
+            ];
+
+            $response = $client->post($url, [
+                'headers' => [
+                    'accept' => 'application/json',
+                    'Content-Type' => 'application/x-www-form-urlencoded',
                 ],
+                'form_params' => $body,
                 'verify' => false,
             ]);
-
             $data = json_decode($response->getBody(), true);
+
             return $data['access_token'];
+
         } catch (\Exception $e) {
             throw new \Exception('Error al obtener el token de acceso: ' . $e->getMessage());
         }
@@ -50,43 +59,33 @@ class UserStatusController extends Controller
         return $token;
     }
 
-    public function getIdUser($userName) {
+    public function getInfoUser($user)
+    {
         $accessToken = $this->getManagementAccessToken();
         $client = new \GuzzleHttp\Client();
 
         try {
-            $response = $client->get('https://localhost:9443/wso2/scim/Users?filter=userName eq "' . $userName . '"', [
+            $response = $client->get(env('KEYCLOAK_BASE_URL'). "/". env('KEYCLOAK_REALM').'/realms/'.env('KEYCLOAK_REALM').'/users', [
                 'headers' => [
                     'Authorization' => 'Bearer ' . $accessToken,
                     'Content-Type' => 'application/json',
                 ],
+                'query' => [
+                    'username' => $user
+                ],
                 'verify' => false,
             ]);
 
-            $responseBody = $response->getBody()->getContents();
-            $userData = json_decode($responseBody, true);
+            $userData = json_decode($response->getBody(), true);
 
-            if ($userData['totalResults'] > 0) {
-                $idUser = $userData['Resources'][0]['id'];
-                return $idUser;
+            if($userData) {
+                return $userData;
+            } else {
+                return response()->json(['error' => 'No se encuentra el user ID'], 404);
             }
 
         } catch (RequestException $e) {
-            if ($e->hasResponse()) {
-                $statusCode = $e->getResponse()->getStatusCode();
-                $statusText = $e->getResponse()->getReasonPhrase();
-                $errorBody = $e->getResponse()->getBody()->getContents();
-
-                return response()->json([
-                    'error' => $statusText,
-                    'code' => $statusCode,
-                    'details' => json_decode($errorBody, true),
-                ], $statusCode);
-            } else {
-                return response()->json(['error' => $e->getMessage()], 500);
-            }
-        } catch (\Exception $e) {
-            return 'usuario inexistente';
+            return response()->json(['error' => $e->getMessage()], 400);
         }
     }
 
@@ -95,31 +94,20 @@ class UserStatusController extends Controller
         $client = new Client();
 
         try {
-            $response = $client->request('PATCH', 'https://localhost:9443/t/carbon.super/scim2/Users/'."$userId",[
+            $token = $this->getManagementAccessToken();
+
+            $body = [
+                'enabled' => false
+            ];
+
+            $client->put(env('KEYCLOAK_BASE_URL'). "/". env('KEYCLOAK_REALM').'/realms/'.env('KEYCLOAK_REALM').'/users/'.$userId, [
                 'headers' => [
-                    'Authorization' => "Basic YWRtaW46YWRtaW4",
-                    'Content-Type'  => 'application/json',
+                    'Authorization' => 'Bearer ' . $token,
+                    'Content-Type' => 'application/json',
                 ],
-                'json' => [
-                    'Operations' => [
-                        [
-                            'op' => 'replace',
-                            'value' => [
-                                'urn:ietf:params:scim:schemas:extension:enterprise:2.0:User' => [
-                                    'accountLocked' => true
-                                ],
-                            ]
-                        ]
-                    ],
-                    'schemas' => [
-                        'urn:ietf:params:scim:api:messages:2.0:PatchOp'
-                    ]
-
-                 ],
-                 'verify' => false,
+                'json' => $body,
+                'verify' => false,
             ]);
-
-            return json_decode($response->getBody(), true);
         } catch (\Exception $e) {
             return 'Error: ' . $e->getMessage();
         }
@@ -129,31 +117,20 @@ class UserStatusController extends Controller
         $client = new Client();
 
         try {
-            $response = $client->request('PATCH', 'https://localhost:9443/t/carbon.super/scim2/Users/'."$userId",[
+            $token = $this->getManagementAccessToken();
+
+            $body = [
+                'enabled' => true
+            ];
+
+            $client->put(env('KEYCLOAK_BASE_URL'). "/". env('KEYCLOAK_REALM').'/realms/'.env('KEYCLOAK_REALM').'/users/'.$userId, [
                 'headers' => [
-                    'Authorization' => "Basic YWRtaW46YWRtaW4",
-                    'Content-Type'  => 'application/json',
+                    'Authorization' => 'Bearer ' . $token,
+                    'Content-Type' => 'application/json',
                 ],
-                'json' => [
-                    'Operations' => [
-                        [
-                            'op' => 'replace',
-                            'value' => [
-                                'urn:ietf:params:scim:schemas:extension:enterprise:2.0:User' => [
-                                    'accountLocked' => false
-                                ],
-                            ]
-                        ]
-                    ],
-                    'schemas' => [
-                        'urn:ietf:params:scim:api:messages:2.0:PatchOp'
-                    ]
-
-                 ],
-                 'verify' => false,
+                'json' => $body,
+                'verify' => false,
             ]);
-
-            return json_decode($response->getBody(), true);
         } catch (\Exception $e) {
             return 'Error: ' . $e->getMessage();
         }
