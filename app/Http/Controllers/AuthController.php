@@ -74,7 +74,7 @@ class AuthController extends Controller
         $client = new Client();
 
         try {
-            $response = $client->post('http://localhost:8080/admin/realms/'.env('KEYCLOAK_REALM').'/users', [
+            $client->post(env('KEYCLOAK_BASE_URL'). "/". env('KEYCLOAK_REALM').'/realms/'.env('KEYCLOAK_REALM').'/users', [
                 'headers' => [
                     'Authorization' => 'Bearer ' . $accessToken,
                     'Content-Type' => 'application/json',
@@ -105,19 +105,26 @@ class AuthController extends Controller
         $client = new Client();
 
         try {
-            $response = $client->post(env('KEYCLOAK_TOKEN_URL'), [
-                'form_params' => [
-                'username' => env('KEYCLOAK_ADMINISTRATION_USERNAME'),
-                'password' => env('KEYCLOAK_ADMINISTRATION_PASSWORD'),
-                'grant_type' => 'password',
+            $url = env('KEYCLOAK_BASE_URL').'/realms/'.env('KEYCLOAK_REALM').'/protocol/openid-connect/token';
+
+            $body = [
+                'grant_type' => 'client_credentials',
                 'client_id' => env('KEYCLOAK_CLIENT_ID'),
-                'client_secret' => env('KEYCLOAK_CLIENT_SECRET')
-            ],
+                'client_secret' => env('KEYCLOAK_CLIENT_SECRET'),
+            ];
+
+            $response = $client->post($url, [
+                'headers' => [
+                    'accept' => 'application/json',
+                    'Content-Type' => 'application/x-www-form-urlencoded',
+                ],
+                'form_params' => $body,
                 'verify' => false,
             ]);
-
             $data = json_decode($response->getBody(), true);
+
             return $data['access_token'];
+
         } catch (\Exception $e) {
             throw new \Exception('Error al obtener el token de acceso: ' . $e->getMessage());
         }
@@ -131,11 +138,18 @@ class AuthController extends Controller
 
             $client = new \GuzzleHttp\Client();
 
-            $response = $client->put('http://localhost:8080/admin/realms/'.env('KEYCLOAK_REALM').'/users/'.$userId.'/reset-password-email', [
+            $body = [
+                'type' => 'password',
+                'value' => $request->password,
+                'temporary' => false,
+            ];
+
+            $client->put(env('KEYCLOAK_BASE_URL'). "/". env('KEYCLOAK_REALM').'/realms/'.env('KEYCLOAK_REALM').'/users/'.$userId.'/reset-password', [
                 'headers' => [
                     'Authorization' => 'Bearer ' . $token,
                     'Content-Type' => 'application/json',
                 ],
+                'json' => $body,
                 'verify' => false,
             ]);
 
@@ -208,7 +222,7 @@ class AuthController extends Controller
         $client = new \GuzzleHttp\Client();
 
         try {
-            $response = $client->get('http://localhost:8080/admin/realms/'.env('KEYCLOAK_REALM').'/users', [
+            $response = $client->get(env('KEYCLOAK_BASE_URL'). "/". env('KEYCLOAK_REALM').'/realms/'.env('KEYCLOAK_REALM').'/users', [
                 'headers' => [
                     'Authorization' => 'Bearer ' . $accessToken,
                     'Content-Type' => 'application/json',
