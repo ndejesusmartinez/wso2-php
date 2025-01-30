@@ -158,6 +158,32 @@ class AuthController extends Controller
         }
     }
 
+    public function resetPasswordV2(Request $request)
+    {
+        try {
+            $token = $this->getManagementAccessToken();
+            $userId = $this->validateUserExists($request->user);
+
+            $client = new \GuzzleHttp\Client();
+
+            $response = $client->put('http://localhost:8080/admin/realms/'.env('KEYCLOAK_REALM').'/users/'.$userId.'/reset-password', [
+                'headers' => [
+                    'Authorization' => 'Bearer ' . $token,
+                    'Content-Type' => 'application/json',
+                ],
+                'json' => [
+                    'type' => 'password',
+                    'value' => $request->new_password,
+                    'temporary' => false,
+                ],
+                'verify' => false,
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json(['error' => $e->getMessage()], 400);
+        }
+
+    }
+
     // public function searchUserById(Request $request)
     // {
     //     $request->validate([
