@@ -96,7 +96,12 @@ class AuthController extends Controller
 
             return response()->json(['Message' => 'Usuario creado correctamente, por favor verificar email'], 201);
         } catch (\Exception $e) {
-            return response()->json(['error' => $e->getMessage()], 400);
+            $responseBody = $e->getResponse()->getBody()->getContents();
+            $decodedResponse = json_decode($responseBody, true);
+            return response()->json([
+                'error' => 'Error',
+                'message' => $decodedResponse['errorMessage'] ?? $decodedResponse,
+            ], $e->getResponse()->getStatusCode() ?: 500);
         }
     }
 
